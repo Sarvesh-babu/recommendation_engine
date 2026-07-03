@@ -14,6 +14,57 @@ SEGMENTS = ["budget", "regular", "premium"]
 
 SEARCH_TERMS = ["deal", "best", "cheap", "new", "review", "sale", "top rated", "gift"]
 
+FIRST_NAMES = [
+    "Olivia", "Liam", "Emma", "Noah", "Ava", "Ethan", "Sophia", "Mason", "Isabella", "Lucas",
+    "Mia", "Aiden", "Charlotte", "Logan", "Amelia", "Elijah", "Harper", "James", "Evelyn", "Benjamin",
+    "Abigail", "Henry", "Ella", "Sebastian", "Scarlett", "Jack", "Grace", "Owen", "Chloe", "Daniel",
+    "Victoria", "Matthew", "Riley", "Samuel", "Aria", "David", "Lily", "Joseph", "Zoey", "Carter",
+    "Nora", "Wyatt", "Hannah", "John", "Layla", "Luke", "Stella", "Anthony", "Natalie", "Isaac",
+    "Audrey", "Dylan", "Brooklyn", "Gabriel", "Leah", "Christian", "Savannah", "Andrew", "Claire", "Joshua",
+]
+LAST_NAMES = [
+    "Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez",
+    "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin",
+    "Lee", "Perez", "Thompson", "White", "Harris", "Sanchez", "Clark", "Ramirez", "Lewis", "Robinson",
+    "Walker", "Young", "Allen", "King", "Wright", "Scott", "Torres", "Nguyen", "Hill", "Flores",
+]
+
+PRODUCT_NOUNS = {
+    "electronics": ["Wireless Earbuds", "Bluetooth Speaker", "Smartwatch", "Action Camera", "Power Bank",
+                    "Noise-Cancelling Headphones", "Tablet Stand", "USB-C Hub", "Mechanical Keyboard", "Webcam"],
+    "apparel": ["Running Shoes", "Denim Jacket", "Wool Sweater", "Yoga Leggings", "Graphic T-Shirt",
+                "Rain Jacket", "Canvas Sneakers", "Chino Pants", "Flannel Shirt", "Puffer Vest"],
+    "home": ["Ceramic Mug Set", "Throw Blanket", "Cast Iron Skillet", "Scented Candle", "Bath Towel Set",
+             "Cutting Board", "Desk Lamp", "Storage Bin", "Memory Foam Pillow", "Knife Set"],
+    "grocery": ["Organic Granola", "Cold Brew Coffee", "Sparkling Water", "Trail Mix", "Olive Oil",
+                "Protein Bars", "Herbal Tea", "Almond Butter", "Dark Chocolate Bar", "Pasta Sauce"],
+    "beauty": ["Facial Moisturizer", "Vitamin C Serum", "Shampoo Bar", "Lip Balm Set", "Sunscreen SPF 50",
+               "Body Wash", "Hair Dryer", "Eyeshadow Palette", "Hand Cream", "Beard Oil"],
+}
+BRAND_LABELS = {"acme": "Acme", "globex": "Globex", "initech": "Initech", "umbrella": "Umbrella", "stark": "Stark"}
+
+
+def generate_customer_names(n: int) -> list[str]:
+    """Realistic 'First Last' names; duplicates are fine -- real customer
+    bases have plenty of repeated names too."""
+    return [f"{random.choice(FIRST_NAMES)} {random.choice(LAST_NAMES)}" for _ in range(n)]
+
+
+def generate_product_name(category: str, brand: str, used: set[str]) -> str:
+    """Brand + descriptive noun phrase for the product's category, e.g.
+    'Acme Wireless Earbuds'. Falls back to a numbered variant if every
+    noun phrase for this category has already been used by this brand."""
+    nouns = PRODUCT_NOUNS.get(category, ["Product"])
+    random.shuffle(nouns)
+    for noun in nouns:
+        name = f"{BRAND_LABELS.get(brand, brand.title())} {noun}"
+        if name not in used:
+            used.add(name)
+            return name
+    name = f"{BRAND_LABELS.get(brand, brand.title())} {nouns[0]} ({len(used) + 1})"
+    used.add(name)
+    return name
+
 N_CUSTOMERS = 60
 N_PRODUCTS = 40
 N_TRANSACTIONS = 800
@@ -29,6 +80,7 @@ def generate():
     customers = pd.DataFrame(
         {
             "customer_id": [f"C{i:04d}" for i in range(N_CUSTOMERS)],
+            "name": generate_customer_names(N_CUSTOMERS),
             "segment": [random.choice(SEGMENTS) for _ in range(N_CUSTOMERS)],
             "signup_date": [
                 (datetime(2024, 1, 1) + timedelta(days=random.randint(0, 500))).date().isoformat()
@@ -37,11 +89,18 @@ def generate():
         }
     )
 
+    product_categories = [random.choice(CATEGORIES) for _ in range(N_PRODUCTS)]
+    product_brands = [random.choice(BRANDS) for _ in range(N_PRODUCTS)]
+    used_names: set[str] = set()
     products = pd.DataFrame(
         {
             "product_id": [f"P{i:04d}" for i in range(N_PRODUCTS)],
-            "category": [random.choice(CATEGORIES) for _ in range(N_PRODUCTS)],
-            "brand": [random.choice(BRANDS) for _ in range(N_PRODUCTS)],
+            "name": [
+                generate_product_name(cat, brand, used_names)
+                for cat, brand in zip(product_categories, product_brands)
+            ],
+            "category": product_categories,
+            "brand": product_brands,
             "price": [round(random.uniform(5, 250), 2) for _ in range(N_PRODUCTS)],
         }
     )

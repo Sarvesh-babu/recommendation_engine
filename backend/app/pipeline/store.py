@@ -49,6 +49,9 @@ def init_db() -> None:
                 run_id TEXT, segment_key TEXT, items_json TEXT,
                 PRIMARY KEY (run_id, segment_key)
             );
+            CREATE TABLE IF NOT EXISTS name_maps (
+                run_id TEXT PRIMARY KEY, customer_names_json TEXT, product_names_json TEXT
+            );
             """
         )
         try:
@@ -128,6 +131,35 @@ def latest_completed_run() -> dict | None:
             "SELECT run_id FROM runs WHERE status='completed' ORDER BY computed_at DESC LIMIT 1"
         ).fetchone()
     return get_run(row[0]) if row else None
+
+
+def list_runs(limit: int = 50) -> list[dict]:
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT run_id, industry, status, computed_at, error FROM runs ORDER BY computed_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [
+        {"run_id": r[0], "industry": r[1], "status": r[2], "computed_at": r[3], "error": r[4]} for r in rows
+    ]
+
+
+def write_name_maps(run_id: str, customer_names: dict[str, str], product_names: dict[str, str]) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO name_maps (run_id, customer_names_json, product_names_json) VALUES (?, ?, ?)",
+            (run_id, json.dumps(customer_names), json.dumps(product_names)),
+        )
+
+
+def get_name_maps(run_id: str) -> tuple[dict[str, str], dict[str, str]]:
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT customer_names_json, product_names_json FROM name_maps WHERE run_id=?", (run_id,)
+        ).fetchone()
+    if not row:
+        return {}, {}
+    return json.loads(row[0]), json.loads(row[1])
 
 
 def write_personalized(run_id: str, results: dict[str, list[str]]) -> None:

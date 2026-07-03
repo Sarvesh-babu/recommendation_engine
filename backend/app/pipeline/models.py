@@ -330,6 +330,28 @@ def fbt_cooccurrence(txn: pd.DataFrame, top_k: int = 10) -> dict[str, list[str]]
     return fbt
 
 
+def cart_cooccurrence_recommendations(
+    txn: pd.DataFrame, cart_product_ids: list[str], top_k: int = 10
+) -> list[dict]:
+    """Aggregates co-occurrence signal across every product currently in
+    the cart, so a candidate that co-occurs with two cart items (e.g.
+    goggles, with both swimwear and a cap in the cart) outranks one that
+    only co-occurs with a single cart item. Computed on demand from a
+    run's raw transactions -- no training/persistence involved."""
+    cart_set = set(cart_product_ids)
+    cooccur = _cooccurrence_counts(txn, products=list(cart_set))
+
+    aggregated: dict[str, dict[str, int]] = {}
+    for cart_item in cart_set:
+        for candidate, count in cooccur.get(cart_item, {}).items():
+            if candidate in cart_set:
+                continue
+            aggregated.setdefault(candidate, {})[cart_item] = count
+
+    ranked = sorted(aggregated.items(), key=lambda kv: (-len(kv[1]), -sum(kv[1].values())))[:top_k]
+    return [{"product_id": candidate, "contributing_cart_items": contributions} for candidate, contributions in ranked]
+
+
 FBT_DISPATCH = {
     "apriori_lift": fbt_apriori_lift,
     "apriori_confidence": fbt_apriori_confidence,

@@ -9,6 +9,7 @@ Industry-agnostic except for the single call into the registry-resolved pack.
 from app.pipeline import deep_model as deep_model_mod
 from app.pipeline import eda as eda_mod
 from app.pipeline import evaluation as evaluation_mod
+from app.pipeline import explain as explain_mod
 from app.pipeline import features as features_mod
 from app.pipeline import models as models_mod
 from app.pipeline import store
@@ -36,6 +37,10 @@ def prepare_run(run_id: str, industry: str, file_paths: dict[str, str]) -> None:
             eda_summary["segment_breakdown"] = eda_mod.segment_breakdown(
                 dataframes["transactions"], dataframes["customers"], segment_key_for_eda
             )
+
+        customer_names = explain_mod.build_name_map(dataframes["customers"], "customer_id")
+        product_names = explain_mod.build_name_map(dataframes["products"], "product_id")
+        store.write_name_maps(run_id, customer_names, product_names)
 
         store.mark_eda_ready(run_id, eda_summary)
     except ValidationError as e:
@@ -95,9 +100,16 @@ def train_models(run_id: str, industry: str, file_paths: dict[str, str], model_c
 
         metrics = evaluation_mod.evaluate(dataframes, features, personalized_variant=personalized_variant)
 
-        store.write_personalized(run_id, personalized)
-        store.write_fbt(run_id, fbt)
-        store.write_popularity(run_id, popularity)
+        product_names = explain_mod.build_name_map(dataframes["products"], "product_id")
+        personalized_enriched = explain_mod.enrich_personalized(
+            personalized, txn, dataframes["products"], product_names, personalized_variant
+        )
+        fbt_enriched = explain_mod.enrich_fbt(fbt, txn, product_names)
+        popularity_enriched = explain_mod.enrich_popularity(popularity, product_names, popular_variant)
+
+        store.write_personalized(run_id, personalized_enriched)
+        store.write_fbt(run_id, fbt_enriched)
+        store.write_popularity(run_id, popularity_enriched)
         store.mark_training_completed(run_id, metrics)
     except ValidationError as e:
         store.mark_run_failed(run_id, str(e))

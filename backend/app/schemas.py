@@ -42,3 +42,8 @@ class TrainRequest(BaseModel):
     personalized: Optional[str] = None
     fbt: Optional[str] = None
     popular: Optional[str] = None
+
+
+class CartRequest(BaseModel):
+    product_ids: list[str]
+    customer_label: Optional[str] = None

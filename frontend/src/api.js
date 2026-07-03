@@ -35,6 +35,10 @@ export function startTraining(runId, modelConfig) {
   }).then(asJson);
 }
 
+export function listRuns() {
+  return fetch(`${BASE}/pipeline/runs`).then(asJson);
+}
+
 export function getRunStatus(runId) {
   return fetch(`${BASE}/pipeline/status/${runId}`).then(asJson);
 }
@@ -48,6 +52,14 @@ export function getEda(runId) {
   return fetch(`${BASE}/pipeline/eda${q}`).then(asJson);
 }
 
+export function listCustomers(runId) {
+  return fetch(`${BASE}/pipeline/customers/${runId}`).then(asJson);
+}
+
+export function listProducts(runId) {
+  return fetch(`${BASE}/pipeline/products/${runId}`).then(asJson);
+}
+
 export function getPersonalized(customerId, runId) {
   const q = runId ? `?run_id=${runId}` : "";
   return fetch(`${BASE}/recommendations/personalized/${encodeURIComponent(customerId)}${q}`).then(asJson);
@@ -58,6 +70,23 @@ export function getFrequentlyBoughtTogether(productId, runId) {
   return fetch(`${BASE}/recommendations/frequently-bought-together/${encodeURIComponent(productId)}${q}`).then(
     asJson
   );
+}
+
+export function getCartRecommendations(productIds, runId, customerLabel) {
+  const q = runId ? `?run_id=${runId}` : "";
+  return fetch(`${BASE}/recommendations/cart${q}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ product_ids: productIds, customer_label: customerLabel || null }),
+  }).then(asJson);
+}
+
+export function getSampleCarts(runId, n) {
+  const params = new URLSearchParams();
+  if (runId) params.set("run_id", runId);
+  if (n) params.set("n", n);
+  const q = params.toString() ? `?${params.toString()}` : "";
+  return fetch(`${BASE}/recommendations/sample-carts${q}`).then(asJson);
 }
 
 export function getPopular(segment, runId) {

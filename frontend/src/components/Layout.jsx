@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import ganitLogo from "../assets/ganit-logo.png";
 
 const NAV_ITEMS = [
+  {
+    label: "Home",
+    description: "What this app does and which recommendation models are available.",
+    path: () => "/",
+    needsRun: false,
+  },
   {
     label: "Upload",
     description: "Upload your transactions, customers, and products (plus optional sessions, returns, search logs, and promotions), and validate the schema.",
@@ -27,6 +34,12 @@ const NAV_ITEMS = [
     needsRun: true,
   },
   {
+    label: "Cart recommendations",
+    description: "Pick a set of cart items and get companion-product recommendations based on this run's purchase co-occurrence.",
+    path: (runId) => `/cart/${runId}`,
+    needsRun: true,
+  },
+  {
     label: "Validation",
     description: "Offline precision/recall/hit-rate@k metrics, compared against a popularity baseline.",
     path: (runId) => `/validation/${runId}`,
@@ -35,7 +48,7 @@ const NAV_ITEMS = [
 ];
 
 function currentRunId(pathname) {
-  const match = pathname.match(/^\/(?:eda|models|results|validation)\/([^/]+)/);
+  const match = pathname.match(/^\/(?:eda|models|results|validation|cart)\/([^/]+)/);
   return match ? match[1] : null;
 }
 
@@ -53,7 +66,7 @@ export default function Layout({ children }) {
         }`}
       >
         <div className="flex items-center justify-between px-3 py-4">
-          {!collapsed && <span className="text-sm font-semibold text-slate-800">Menu</span>}
+          {!collapsed && <img src={ganitLogo} alt="Ganit" className="h-7 w-auto" />}
           <button
             onClick={() => setCollapsed((c) => !c)}
             className="text-slate-400 hover:text-slate-600 text-sm px-1"
@@ -69,7 +82,10 @@ export default function Layout({ children }) {
             {NAV_ITEMS.map((item) => {
               const disabled = item.needsRun && !runId;
               const target = item.path(runId);
-              const active = location.pathname.startsWith(target.split("/").slice(0, 2).join("/"));
+              const active =
+                target === "/"
+                  ? location.pathname === "/"
+                  : location.pathname.startsWith(target.split("/").slice(0, 2).join("/"));
               return (
                 <div key={item.label} className="group relative">
                   <button

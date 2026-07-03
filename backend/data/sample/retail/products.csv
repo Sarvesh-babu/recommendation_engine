@@ -1,41 +1,41 @@
-product_id,category,brand,price
-P0000,electronics,stark,237.0
-P0001,home,initech,25.99
-P0002,grocery,stark,124.07
-P0003,home,acme,21.96
-P0004,electronics,acme,191.35
-P0005,apparel,stark,192.63
-P0006,beauty,initech,36.46
-P0007,home,initech,121.44
-P0008,apparel,acme,139.7
-P0009,grocery,initech,69.94
-P0010,grocery,umbrella,218.75
-P0011,grocery,globex,108.67
-P0012,apparel,umbrella,56.89
-P0013,home,acme,137.13
-P0014,apparel,initech,183.83
-P0015,apparel,stark,54.28
-P0016,beauty,globex,81.37
-P0017,beauty,stark,248.81
-P0018,home,acme,164.22
-P0019,beauty,initech,112.33
-P0020,grocery,stark,131.81
-P0021,beauty,stark,34.65
-P0022,grocery,globex,60.05
-P0023,home,globex,87.83
-P0024,apparel,initech,149.14
-P0025,apparel,globex,61.38
-P0026,beauty,stark,58.95
-P0027,grocery,stark,22.39
-P0028,electronics,acme,159.62
-P0029,electronics,stark,61.09
-P0030,electronics,initech,226.83
-P0031,apparel,umbrella,215.61
-P0032,apparel,acme,22.36
-P0033,grocery,acme,63.31
-P0034,beauty,initech,168.9
-P0035,electronics,initech,57.49
-P0036,grocery,globex,37.42
-P0037,grocery,acme,234.2
-P0038,beauty,globex,144.91
-P0039,grocery,stark,120.8
+product_id,name,category,brand,price
+P0000,Initech Throw Blanket,home,initech,85.08
+P0001,Umbrella Dark Chocolate Bar,grocery,umbrella,191.5
+P0002,Umbrella Body Wash,beauty,umbrella,97.89
+P0003,Umbrella Pasta Sauce,grocery,umbrella,189.24
+P0004,Acme Tablet Stand,electronics,acme,208.82
+P0005,Acme Chino Pants,apparel,acme,66.81
+P0006,Acme Canvas Sneakers,apparel,acme,25.07
+P0007,Umbrella Bluetooth Speaker,electronics,umbrella,9.75
+P0008,Initech Cast Iron Skillet,home,initech,137.16
+P0009,Acme Bluetooth Speaker,electronics,acme,249.98
+P0010,Globex Facial Moisturizer,beauty,globex,90.74
+P0011,Globex Eyeshadow Palette,beauty,globex,164.29
+P0012,Globex Rain Jacket,apparel,globex,196.4
+P0013,Stark Hair Dryer,beauty,stark,164.68
+P0014,Umbrella Graphic T-Shirt,apparel,umbrella,189.79
+P0015,Globex Wireless Earbuds,electronics,globex,237.65
+P0016,Umbrella Noise-Cancelling Headphones,electronics,umbrella,53.84
+P0017,Globex Bluetooth Speaker,electronics,globex,9.99
+P0018,Initech Wool Sweater,apparel,initech,42.33
+P0019,Umbrella Smartwatch,electronics,umbrella,35.92
+P0020,Globex Tablet Stand,electronics,globex,169.02
+P0021,Acme Throw Blanket,home,acme,143.17
+P0022,Umbrella Tablet Stand,electronics,umbrella,58.4
+P0023,Stark Lip Balm Set,beauty,stark,176.37
+P0024,Acme Flannel Shirt,apparel,acme,192.89
+P0025,Acme Scented Candle,home,acme,46.11
+P0026,Stark Dark Chocolate Bar,grocery,stark,153.78
+P0027,Acme Puffer Vest,apparel,acme,188.24
+P0028,Acme Eyeshadow Palette,beauty,acme,33.06
+P0029,Globex Chino Pants,apparel,globex,205.73
+P0030,Globex Vitamin C Serum,beauty,globex,241.36
+P0031,Umbrella Hand Cream,beauty,umbrella,31.48
+P0032,Umbrella Trail Mix,grocery,umbrella,11.29
+P0033,Umbrella Puffer Vest,apparel,umbrella,81.43
+P0034,Globex Olive Oil,grocery,globex,170.95
+P0035,Umbrella Cold Brew Coffee,grocery,umbrella,239.75
+P0036,Acme Rain Jacket,apparel,acme,102.18
+P0037,Globex Webcam,electronics,globex,180.18
+P0038,Umbrella Power Bank,electronics,umbrella,23.62
+P0039,Acme Protein Bars,grocery,acme,174.2
