@@ -1,6 +1,6 @@
 const BASE = "/api";
 
-async function asJson(res) {
+export async function asJson(res) {
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(body.detail || `Request failed (${res.status})`);

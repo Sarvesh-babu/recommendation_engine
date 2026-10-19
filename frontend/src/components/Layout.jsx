@@ -52,10 +52,16 @@ const NAV_ITEMS = [
     path: (runId) => `/validation/${runId}`,
     needsRun: true,
   },
+  {
+    label: "Insights",
+    description: "Merchandising insights: category cross-sell heatmap, revenue opportunity sizing, product affinity network, action cards, promotion & threshold optimizer, and seasonal trend detection.",
+    path: (runId) => `/insights/${runId}`,
+    needsRun: true,
+  },
 ];
 
 function currentRunId(pathname) {
-  const match = pathname.match(/^\/(?:layer1|eda|models|results|validation|cart)\/([^/]+)/);
+  const match = pathname.match(/^\/(?:layer1|eda|models|results|validation|cart|insights)\/([^/]+)/);
   return match ? match[1] : null;
 }
 

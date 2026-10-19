@@ -17,6 +17,7 @@ from app.pipeline import store
 from app.pipeline.export import write_excel_export
 from app.pipeline.runner import prepare_run, train_models
 from app.pipeline.layer1_orchestrator import run_layer1_refinement
+from app.insights.router import router as insights_router
 from app.registry import available_industries
 from app.schemas import CartRequest, TrainRequest
 
@@ -28,6 +29,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 store.init_db()
+app.include_router(insights_router)
 
 _layer1_cache = {}
 

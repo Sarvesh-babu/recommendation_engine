@@ -7,6 +7,7 @@ import ModelSettingsPage from "./pages/ModelSettingsPage";
 import ResultsPage from "./pages/ResultsPage";
 import ValidationPage from "./pages/ValidationPage";
 import CartRecommendationsPage from "./pages/CartRecommendationsPage";
+import InsightsPage from "./insights/InsightsPage";
 import Layer1Refinement from "./pages/Layer1Refinement";
 
 function App() {
@@ -21,6 +22,7 @@ function App() {
         <Route path="/results/:runId" element={<ResultsPage />} />
         <Route path="/validation/:runId" element={<ValidationPage />} />
         <Route path="/cart/:runId" element={<CartRecommendationsPage />} />
+        <Route path="/insights/:runId" element={<InsightsPage />} />
       </Routes>
     </Layout>
   );
