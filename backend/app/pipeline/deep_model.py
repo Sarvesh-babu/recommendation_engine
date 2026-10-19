@@ -47,16 +47,21 @@ def build_side_features(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Assemble per-customer and per-product numeric feature matrices, row
     order aligned to `customers`/`products` (the same order as cust_idx /
-    prod_idx), zero-filled wherever an optional source file was absent."""
-    txn = dataframes["transactions"]
-    products_df = dataframes["products"]
+    prod_idx), filtering out skewed, constant, and redundant features."""
+    from app.pipeline.features import filter_features_for_modeling
 
-    cust_blocks = [
-        _indexed_matrix(
-            features["behavioral"], "customer_id", ["total_spend", "n_orders", "n_distinct_products"], customers
-        ),
-        _indexed_matrix(features["temporal"], "customer_id", ["recency_days"], customers),
-    ]
+    txn = dataframes["transactions"]
+    products_df = dataframes.get("products", pd.DataFrame())
+    customers_df = dataframes.get("customers", pd.DataFrame())
+
+    beh_cols = [c for c in ["user_monetary_total_log", "user_frequency_count", "user_avg_unit_price", "total_spend", "n_orders", "n_distinct_products"] if c in features["behavioral"].columns]
+    temp_cols = [c for c in ["user_recency_days", "recency_days"] if c in features["temporal"].columns]
+
+    cust_blocks = []
+    if beh_cols:
+        cust_blocks.append(_indexed_matrix(features["behavioral"], "customer_id", beh_cols, customers))
+    if temp_cols:
+        cust_blocks.append(_indexed_matrix(features["temporal"], "customer_id", temp_cols, customers))
     if "search_intent" in features:
         cust_blocks.append(_indexed_matrix(features["search_intent"], "customer_id", ["n_searches"], customers))
     if "promotion_sensitivity" in features:
@@ -66,12 +71,18 @@ def build_side_features(
     if "session_affinity" in features:
         session_totals = features["session_affinity"].groupby("customer_id")["session_views"].sum().reset_index()
         cust_blocks.append(_indexed_matrix(session_totals, "customer_id", ["session_views"], customers))
-    cust_feat = _standardize(np.concatenate(cust_blocks, axis=1))
+
+    # Dynamically extract and filter numeric side features from customers DataFrame
+    if not customers_df.empty and "customer_id" in customers_df.columns:
+        cust_clean_cols = filter_features_for_modeling(customers_df, id_cols=["customer_id"])
+        if cust_clean_cols:
+            cust_blocks.append(_indexed_matrix(customers_df, "customer_id", cust_clean_cols, customers))
+
+    cust_feat_raw = np.concatenate(cust_blocks, axis=1) if cust_blocks else np.zeros((len(customers), 0))
+    cust_feat = _standardize(cust_feat_raw)
 
     sold = txn.groupby("product_id")["quantity"].sum().reset_index().rename(columns={"quantity": "units_sold"})
     prod_blocks = [_indexed_matrix(sold, "product_id", ["units_sold"], products)]
-    if "price" in products_df.columns:
-        prod_blocks.append(_indexed_matrix(products_df, "product_id", ["price"], products))
     if "category" in products_df.columns:
         freq = products_df["category"].value_counts(normalize=True)
         cat_freq_df = products_df[["product_id", "category"]].copy()
@@ -81,7 +92,15 @@ def build_side_features(
         prod_blocks.append(
             _indexed_matrix(features["returns_adjusted_demand"], "product_id", ["net_demand"], products)
         )
-    prod_feat = _standardize(np.concatenate(prod_blocks, axis=1))
+
+    # Dynamically extract and filter numeric side features from products DataFrame
+    if not products_df.empty and "product_id" in products_df.columns:
+        prod_clean_cols = filter_features_for_modeling(products_df, id_cols=["product_id"])
+        if prod_clean_cols:
+            prod_blocks.append(_indexed_matrix(products_df, "product_id", prod_clean_cols, products))
+
+    prod_feat_raw = np.concatenate(prod_blocks, axis=1) if prod_blocks else np.zeros((len(products), 0))
+    prod_feat = _standardize(prod_feat_raw)
 
     return cust_feat, prod_feat
 

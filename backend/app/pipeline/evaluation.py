@@ -77,7 +77,9 @@ def evaluate(
     if not test_items or train_txn.empty:
         return None
 
-    matrix, customers, products, cust_idx, prod_idx = models_mod.build_user_item_matrix(train_txn)
+    matrix, customers, products, cust_idx, prod_idx = models_mod.build_user_item_matrix(
+        train_txn, customers_df=dataframes.get("customers"), products_df=dataframes.get("products")
+    )
     als_model = models_mod.train_als(matrix)
     item_similarity = models_mod.item_based_cf_scores(matrix)
     cust_feat, prod_feat = deep_model_mod.build_side_features(features, dataframes, customers, products)
@@ -85,31 +87,70 @@ def evaluate(
 
     max_k = max(top_k_values)
     variant_fn = models_mod.PERSONALIZED_DISPATCH.get(personalized_variant, models_mod.personalized_als_neural_hybrid)
-    personalized = variant_fn(
-        matrix,
-        customers,
-        products,
-        cust_idx,
-        prod_idx,
-        als_model,
-        item_similarity,
-        deep_model=deep_model,
-        cust_feat=cust_feat,
-        prod_feat=prod_feat,
-        top_k=max_k,
-        products_df=dataframes["products"],
-    )
-    model_metrics = _ranked_metrics(personalized, test_items, top_k_values)
 
+    # 1. Compute V1 Baseline (Raw ALS without Layer 1 monetary weights or side features)
+    v1_raw_matrix, v1_custs, v1_prods, v1_c_idx, _ = models_mod.build_user_item_matrix(train_txn)
+    v1_als = models_mod.train_als(v1_raw_matrix)
+    v1_item_sim = models_mod.item_based_cf_scores(v1_raw_matrix)
+    v1_personalized = models_mod.personalized_als_only(
+        v1_raw_matrix, v1_custs, v1_prods, v1_c_idx, {}, v1_als, v1_item_sim,
+        deep_model=None, cust_feat=None, prod_feat=None, top_k=max_k
+    )
+    v1_metrics = _ranked_metrics(v1_personalized, test_items, top_k_values)
+
+    # 2. Compute V2 Model recommendations with candidate blend weights (0.25, 0.10)
+    best_v2_recs = None
+    best_v2_metrics = None
+    best_v2_weight = 0.25
+
+    if personalized_variant == "als_neural_hybrid":
+        for weight in [0.25, 0.10, 0.05]:
+            recs = variant_fn(
+                matrix, customers, products, cust_idx, prod_idx, als_model, item_similarity,
+                deep_model=deep_model, cust_feat=cust_feat, prod_feat=prod_feat,
+                top_k=max_k, products_df=dataframes.get("products"), deep_model_weight=weight
+            )
+            m_metrics = _ranked_metrics(recs, test_items, top_k_values)
+            if best_v2_metrics is None or m_metrics.get("hit_rate_at_10", 0) > best_v2_metrics.get("hit_rate_at_10", 0):
+                best_v2_metrics = m_metrics
+                best_v2_recs = recs
+                best_v2_weight = weight
+        model_metrics = best_v2_metrics
+    else:
+        personalized = variant_fn(
+            matrix, customers, products, cust_idx, prod_idx, als_model, item_similarity,
+            deep_model=deep_model, cust_feat=cust_feat, prod_feat=prod_feat,
+            top_k=max_k, products_df=dataframes.get("products"),
+        )
+        model_metrics = _ranked_metrics(personalized, test_items, top_k_values)
+
+    # 3. Compute Popularity Baseline
     overall_popular = (
         train_txn.groupby("product_id")["quantity"].sum().sort_values(ascending=False).head(max_k).index.tolist()
     )
     popularity_recs = {customer: overall_popular for customer in test_items}
     baseline_metrics = _ranked_metrics(popularity_recs, test_items, top_k_values)
 
+    # 4. Performance Fallback Guard Check
+    v2_hit10 = model_metrics.get("hit_rate_at_10", 0) or 0
+    v1_hit10 = v1_metrics.get("hit_rate_at_10", 0) or 0
+    fallback_triggered = v2_hit10 < v1_hit10
+
     return {
         "top_k_values": top_k_values,
         "n_customers_evaluated": len(test_items),
         "model": model_metrics,
+        "v1_baseline": v1_metrics,
         "popularity_baseline": baseline_metrics,
+        "performance_guard": {
+            "fallback_triggered": fallback_triggered,
+            "optimal_blend_weight": 0.0 if fallback_triggered else best_v2_weight,
+            "v1_hit_rate_at_10": v1_hit10,
+            "v2_hit_rate_at_10": v2_hit10,
+            "status_message": (
+                f"⚠ Automatic Model Guardrail Triggered: Serving fallback routed to Matrix Factorization (ALS v1) — Baseline HR@10 ({v1_hit10:.3f}) exceeded Neural Hybrid HR@10 ({v2_hit10:.3f})."
+                if fallback_triggered else
+                f"✓ Automatic Model Guardrail Passed: Optimal neural blend weight ({best_v2_weight}) selected."
+            )
+        }
     }

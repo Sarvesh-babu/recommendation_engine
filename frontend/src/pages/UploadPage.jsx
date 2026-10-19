@@ -37,7 +37,7 @@ export default function UploadPage() {
       </header>
 
       <main className="max-w-2xl mx-auto px-6 py-10 space-y-8">
-        <UploadForm onRunStarted={(runId) => navigate(`/eda/${runId}`)} />
+        <UploadForm onRunStarted={(runId) => navigate(`/layer1/${runId}`)} />
 
         <div className="space-y-2">
           <h2 className="text-sm font-semibold text-slate-800">Past runs</h2>

@@ -16,6 +16,13 @@ const NAV_ITEMS = [
     needsRun: false,
   },
   {
+    label: "AI Refinement (Layer 1)",
+    description: "Autonomous data profiling, 6 canonical category classification, AST-audited rules & feature engineering powered by Qwen 3.8-27B.",
+    path: (runId) => `/layer1/${runId}`,
+    needsRun: true,
+  },
+
+  {
     label: "Review data (EDA)",
     description: "Inspect distributions and data quality across all uploaded files before training starts.",
     path: (runId) => `/eda/${runId}`,
@@ -48,9 +55,10 @@ const NAV_ITEMS = [
 ];
 
 function currentRunId(pathname) {
-  const match = pathname.match(/^\/(?:eda|models|results|validation|cart)\/([^/]+)/);
+  const match = pathname.match(/^\/(?:layer1|eda|models|results|validation|cart)\/([^/]+)/);
   return match ? match[1] : null;
 }
+
 
 export default function Layout({ children }) {
   const location = useLocation();

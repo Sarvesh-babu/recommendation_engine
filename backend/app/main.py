@@ -1,5 +1,9 @@
 import shutil
 import uuid
+import time
+from typing import Any
+from dotenv import load_dotenv
+load_dotenv()
 
 import pandas as pd
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
@@ -12,17 +16,20 @@ from app.pipeline import models as models_mod
 from app.pipeline import store
 from app.pipeline.export import write_excel_export
 from app.pipeline.runner import prepare_run, train_models
+from app.pipeline.layer1_orchestrator import run_layer1_refinement
 from app.registry import available_industries
 from app.schemas import CartRequest, TrainRequest
 
 app = FastAPI(title="Recommendation Accelerator")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173", "http://127.0.0.1:5174"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 store.init_db()
+
+_layer1_cache = {}
 
 
 @app.get("/industries")
@@ -52,8 +59,6 @@ async def upload_and_validate(
     search_logs: UploadFile | None = File(None),
     promotions: UploadFile | None = File(None),
 ):
-    """Phase 1: save uploads, validate, and compute EDA. Does not train
-    models -- call POST /pipeline/train/{run_id} once the EDA looks good."""
     run_id = uuid.uuid4().hex[:12]
     run_dir = RUNS_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -91,14 +96,10 @@ def model_options():
 
 @app.post("/pipeline/train/{run_id}")
 def start_training(run_id: str, background_tasks: BackgroundTasks, model_config: TrainRequest | None = None):
-    """Phase 2: train ALS + neural hybrid + FBT + popularity, and run the
-    offline evaluation. Requires phase 1 (EDA) to have completed first.
-    Optionally accepts a JSON body selecting which algorithm variant to use
-    per category -- see GET /model-options for valid names."""
     run = store.get_run(run_id)
     if not run:
         raise HTTPException(404, f"Unknown run_id '{run_id}'")
-    if run["status"] != "eda_ready":
+    if run["status"] not in ("eda_ready", "completed"):
         raise HTTPException(409, f"Run '{run_id}' is not ready for training (status={run['status']})")
 
     dispatches = {
@@ -154,7 +155,27 @@ def _resolve_run_id(run_id: str | None) -> str:
 def get_eda(run_id: str | None = None):
     rid = _resolve_run_id(run_id)
     run = store.get_run(rid)
-    if not run or not run.get("eda"):
+    if not run:
+        raise HTTPException(404, f"No run found for '{rid}'")
+
+    file_paths = _file_paths_for_run(rid)
+    if file_paths:
+        try:
+            import json
+            from app.pipeline.ingestion import load_uploaded_files
+            from app.pipeline import eda as eda_mod
+            current_dfs = load_uploaded_files(file_paths)
+            raw_schema_path = RUNS_DIR / rid / "raw_columns.json"
+            raw_schemas = None
+            if raw_schema_path.exists():
+                with open(raw_schema_path, "r", encoding="utf-8") as f:
+                    raw_schemas = json.load(f)
+            fresh_eda = eda_mod.run_eda(current_dfs, raw_schemas=raw_schemas)
+            return {"run_id": rid, "computed_at": time.time(), **fresh_eda}
+        except Exception as e:
+            print(f"Dynamic EDA computation error: {e}")
+
+    if not run.get("eda"):
         raise HTTPException(404, f"No EDA available for run '{rid}'")
     return {"run_id": rid, "computed_at": run["computed_at"], **run["eda"]}
 
@@ -239,10 +260,6 @@ def get_cart_recommendations(payload: CartRequest, run_id: str | None = None):
 def _sample_carts(
     txn: pd.DataFrame, customer_names: dict[str, str], product_names: dict[str, str], n: int = 3
 ) -> list[dict]:
-    """Stands in for a real "fetch this customer's current cart" API:
-    picks n distinct customers' most recent multi-item basket and presents
-    it as their "current cart". Swap this out for a real external call
-    later -- the response shape is what the frontend actually depends on."""
     basket_sizes = txn.groupby("transaction_id").size()
     multi_item = basket_sizes[basket_sizes >= 2].index
     candidate_baskets = multi_item if len(multi_item) > 0 else basket_sizes.index
@@ -270,9 +287,6 @@ def _sample_carts(
 
 @app.get("/recommendations/sample-carts")
 def get_sample_carts(run_id: str | None = None, n: int = 3):
-    """Mock "fetch a customer's live cart" API: returns n example carts
-    drawn from this run's real purchase history, for demoing the cart
-    recommendations page without manual entry."""
     rid = _resolve_run_id(run_id)
     file_paths = _file_paths_for_run(rid)
     if "transactions" not in file_paths:
@@ -317,3 +331,110 @@ def root():
         "required_files": REQUIRED_FILES,
         "optional_files": OPTIONAL_FILES,
     }
+
+
+# ---------------------------------------------------------
+# LAYER 1 REFINEMENT ENDPOINTS WITH UNIFIED RULE COUNT & HITL SUPPORT
+# ---------------------------------------------------------
+
+@app.get("/layer1/files/{run_id}")
+def get_run_file_list(run_id: str):
+    file_paths = _file_paths_for_run(run_id)
+    if not file_paths:
+        raise HTTPException(404, f"No files found for run '{run_id}'")
+    return {"run_id": run_id, "files": list(file_paths.keys())}
+
+
+@app.post("/layer1/refine-file/{run_id}/{dataset_name}")
+def refine_single_file_layer1(
+    run_id: str,
+    dataset_name: str,
+    user_data_dict: dict[str, str] | None = None,
+    groq_api_key: str | None = None
+):
+    file_paths = _file_paths_for_run(run_id)
+    key = dataset_name.lower()
+    if key not in file_paths:
+        raise HTTPException(404, f"File '{dataset_name}' not found for run '{run_id}'")
+
+    try:
+        dfs = {key: pd.read_csv(file_paths[key])}
+        for other_key, path in file_paths.items():
+            if other_key != key:
+                dfs[other_key] = pd.read_csv(path)
+
+        res = run_layer1_refinement(
+            dfs=dfs,
+            user_data_dict=user_data_dict,
+            api_key=groq_api_key
+        )
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/layer1/apply/{run_id}/{dataset_name}")
+def apply_human_approved_rules(
+    run_id: str,
+    dataset_name: str,
+    approved_rules: list[dict[str, Any]]
+):
+    file_paths = _file_paths_for_run(run_id)
+    key = dataset_name.lower()
+    if key not in file_paths:
+        raise HTTPException(404, f"File '{dataset_name}' not found for run '{run_id}'")
+
+    try:
+        from app.pipeline.rule_executor import HybridRuleExecutor
+        from app.pipeline.cleansing_wrappers import safe_fillna
+        from app.pipeline import eda as eda_mod
+        from app.pipeline.ingestion import load_uploaded_files
+        from app.pipeline.layer1_orchestrator import run_baseline_refinement
+
+        dfs = {key: pd.read_csv(file_paths[key])}
+        for other_key, path in file_paths.items():
+            if other_key != key:
+                dfs[other_key] = pd.read_csv(path)
+
+        # First run baseline transformations (log transforms, datetime parsing, cross-file aggregations, etc.)
+        baseline_dfs, _, _ = run_baseline_refinement(
+            dfs=dfs,
+            primary_file_name=key,
+            user_data_dict=None
+        )
+
+        for r in approved_rules:
+            if "target_dataset" not in r:
+                r["target_dataset"] = key
+
+        # Execute approved LLM & statistical rules on top of baseline transformed DataFrames
+        executor = HybridRuleExecutor()
+        refined_dfs, exec_log = executor.execute_pipeline(baseline_dfs, approved_rules, target_dataset_name=key)
+
+        # Save ALL refined datasets to disk so engineered features on all tables persist
+        for d_name, d_df in refined_dfs.items():
+            if d_name in file_paths:
+                clean_d = safe_fillna(d_df, 0)
+                clean_d.to_csv(file_paths[d_name], index=False)
+
+        refined_df = refined_dfs.get(key, list(refined_dfs.values())[0])
+        total_rules_applied = len(approved_rules)
+
+        # Re-compute EDA summary on refined disk files
+        try:
+            current_dataframes = load_uploaded_files(file_paths)
+            eda_summary = eda_mod.run_eda(current_dataframes)
+            store.mark_eda_ready(run_id, eda_summary)
+        except Exception as eda_err:
+            print(f"EDA update warning: {eda_err}")
+
+        return {
+            "status": "success",
+            "message": f"Successfully applied {total_rules_applied} rules to '{dataset_name}.csv'",
+            "engineered_columns": exec_log["engineered_columns"],
+            "refined_shape": {"rows": len(refined_df), "cols": len(refined_df.columns)},
+            "preview_data": safe_fillna(refined_df.head(50), "").to_dict(orient="records"),
+            "applied_rule_count": total_rules_applied
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

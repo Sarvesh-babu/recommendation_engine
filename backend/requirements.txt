@@ -10,3 +10,6 @@ mlxtend
 torch
 openpyxl
 python-multipart
+groq
+python-dotenv
+

@@ -28,16 +28,45 @@ DEEP_MODEL_WEIGHT = 0.5
 CANDIDATE_MULTIPLIER = 5
 
 
-def build_user_item_matrix(txn: pd.DataFrame):
+def build_user_item_matrix(
+    txn: pd.DataFrame,
+    customers_df: pd.DataFrame | None = None,
+    products_df: pd.DataFrame | None = None
+):
     customers = sorted(txn["customer_id"].unique())
     products = sorted(txn["product_id"].unique())
     cust_idx = {c: i for i, c in enumerate(customers)}
     prod_idx = {p: i for i, p in enumerate(products)}
 
-    counts = txn.groupby(["customer_id", "product_id"]).size().reset_index(name="count")
+    has_qty = "quantity" in txn.columns
+    counts = txn.groupby(["customer_id", "product_id"]).agg(
+        count=("quantity", "sum") if has_qty else ("customer_id", "count")
+    ).reset_index()
+
+    weights = np.ones(len(counts), dtype=np.float32)
+
+    # Apply exponential time decay if timestamps exist
+    if "timestamp" in txn.columns:
+        txn_copy = txn.copy()
+        txn_copy["ts"] = pd.to_datetime(txn_copy["timestamp"], errors="coerce")
+        max_ts = txn_copy["ts"].max()
+        if pd.notna(max_ts):
+            time_agg = txn_copy.groupby(["customer_id", "product_id"])["ts"].max().reset_index()
+            counts = counts.merge(time_agg, on=["customer_id", "product_id"], how="left")
+            days_ago = (max_ts - counts["ts"]).dt.total_seconds() / (24 * 3600)
+            decay = np.exp(-0.005 * days_ago.fillna(0.0).to_numpy())
+            weights *= decay
+
+    # Apply Layer 1 log-monetary multiplier if present
+    if customers_df is not None and not customers_df.empty and "user_monetary_total_log" in customers_df.columns:
+        monetary_map = customers_df.set_index("customer_id")["user_monetary_total_log"].to_dict()
+        cust_monetary = counts["customer_id"].map(monetary_map).fillna(1.0).to_numpy()
+        weights *= np.maximum(0.5, cust_monetary)
+
+    values = counts["count"].values * weights
     rows = counts["customer_id"].map(cust_idx)
     cols = counts["product_id"].map(prod_idx)
-    matrix = csr_matrix((counts["count"].values, (rows, cols)), shape=(len(customers), len(products)))
+    matrix = csr_matrix((values, (rows, cols)), shape=(len(customers), len(products)))
     return matrix, customers, products, cust_idx, prod_idx
 
 
@@ -90,6 +119,7 @@ def _mf_candidate_recommendations(
     prod_feat: np.ndarray | None,
     apply_rerank: bool,
     top_k: int,
+    deep_model_weight: float = 0.25,
 ) -> dict[str, list[str]]:
     """Shared candidate-generation + fallback chain for matrix-factorization
     based personalized variants (ALS, BPR): MF shortlist -> optional
@@ -105,9 +135,9 @@ def _mf_candidate_recommendations(
             item_ids, mf_scores = mf_model.recommend(
                 ci, matrix[ci], N=candidate_n, filter_already_liked_items=True
             )
-            if apply_rerank and deep_model is not None and len(item_ids):
+            if apply_rerank and deep_model is not None and len(item_ids) and deep_model_weight > 0.0:
                 deep_scores = deep_model_mod.score_items(deep_model, ci, item_ids, cust_feat, prod_feat)
-                blended = _minmax(mf_scores) * (1 - DEEP_MODEL_WEIGHT) + _minmax(deep_scores) * DEEP_MODEL_WEIGHT
+                blended = _minmax(mf_scores) * (1.0 - deep_model_weight) + _minmax(deep_scores) * deep_model_weight
                 order = np.argsort(blended)[::-1][:top_k]
                 results[customer] = [products[item_ids[o]] for o in order]
             else:
@@ -125,11 +155,13 @@ def _mf_candidate_recommendations(
 
 def personalized_als_neural_hybrid(
     matrix, customers, products, cust_idx, prod_idx, als_model, item_similarity,
-    deep_model=None, cust_feat=None, prod_feat=None, top_k: int = 10, **_ignored,
+    deep_model=None, cust_feat=None, prod_feat=None, top_k: int = 10,
+    deep_model_weight: float = 0.25, **_ignored,
 ) -> dict[str, list[str]]:
     return _mf_candidate_recommendations(
         als_model, matrix, customers, products, cust_idx, item_similarity,
         deep_model, cust_feat, prod_feat, apply_rerank=True, top_k=top_k,
+        deep_model_weight=deep_model_weight,
     )
 
 

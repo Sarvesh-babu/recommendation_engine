@@ -100,3 +100,19 @@ export function getPopular(segment, runId) {
 export function excelExportUrl(runId) {
   return `${BASE}/export/excel/${runId}`;
 }
+
+export function getRunFileList(runId) {
+  return fetch(`${BASE}/layer1/files/${runId}`).then(asJson);
+}
+
+export function refineSingleFileLayer1(runId, datasetName) {
+  return fetch(`${BASE}/layer1/refine-file/${runId}/${datasetName}`, { method: "POST" }).then(asJson);
+}
+
+export function applyLayer1Rules(runId, datasetName, approvedRules) {
+  return fetch(`${BASE}/layer1/apply/${runId}/${datasetName}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(approvedRules),
+  }).then(asJson);
+}

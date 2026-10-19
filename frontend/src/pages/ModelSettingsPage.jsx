@@ -43,29 +43,29 @@ export default function ModelSettingsPage() {
 
   return (
     <div className="min-h-screen text-slate-900">
-      <header className="border-b border-sky-100/80 bg-white/70 backdrop-blur px-6 py-4 shadow-sm">
-        <h1 className="text-lg font-semibold">Model settings</h1>
-        <p className="text-sm text-slate-500">
-          Choose which algorithm runs for each recommendation category, then start training.
+      <header className="border-b border-slate-200 bg-white px-6 py-4 shadow-sm">
+        <h1 className="text-lg font-bold text-slate-900">Model settings</h1>
+        <p className="text-xs text-slate-500">
+          Configure model algorithms and re-train at any time without re-uploading datasets or repeating EDA.
         </p>
       </header>
 
-      <main className="max-w-2xl mx-auto px-6 py-10 space-y-8">
-        {error && <p className="text-sm text-rose-600">{error}</p>}
+      <main className="max-w-2xl mx-auto px-6 py-8 space-y-6">
+        {error && <p className="text-sm text-rose-600 font-medium">{error}</p>}
         {!options && !error && <p className="text-sm text-slate-500">Loading model options...</p>}
 
         {options &&
           Object.entries(options).map(([category, opts]) => (
             <fieldset key={category} className="space-y-2">
-              <legend className="text-sm font-semibold text-slate-800 mb-2">{CATEGORY_LABELS[category]}</legend>
+              <legend className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">{CATEGORY_LABELS[category]}</legend>
               <div className="space-y-2">
                 {opts.map((opt) => (
                   <label
                     key={opt.name}
-                    className={`flex items-start gap-3 rounded-md border px-3 py-2 shadow-sm cursor-pointer transition ${
+                    className={`flex items-start gap-3 rounded-lg border px-3.5 py-2.5 shadow-sm cursor-pointer transition ${
                       selected[category] === opt.name
-                        ? "border-sky-300 bg-sky-50"
-                        : "border-sky-100 bg-white/80 hover:bg-sky-50/50"
+                        ? "border-sky-500 bg-sky-50/60"
+                        : "border-slate-200 bg-white hover:bg-slate-50"
                     }`}
                   >
                     <input
@@ -77,7 +77,7 @@ export default function ModelSettingsPage() {
                       className="mt-1"
                     />
                     <div>
-                      <p className="text-sm font-medium text-slate-800">{opt.label}</p>
+                      <p className="text-sm font-semibold text-slate-800">{opt.label}</p>
                       <p className="text-xs text-slate-500">{opt.description}</p>
                     </div>
                   </label>
@@ -90,9 +90,9 @@ export default function ModelSettingsPage() {
           <button
             onClick={handleStart}
             disabled={starting}
-            className="w-full rounded-md bg-gradient-to-r from-sky-600 to-cyan-500 hover:from-sky-500 hover:to-cyan-400 text-white disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2 text-sm font-medium transition shadow-sm"
+            className="w-full rounded-lg bg-sky-800 hover:bg-sky-900 text-white disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2.5 text-sm font-semibold transition shadow-sm"
           >
-            {starting ? "Starting..." : "Start pipeline"}
+            {starting ? "Training models..." : "Run / Re-train Models"}
           </button>
         )}
       </main>
