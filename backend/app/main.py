@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import pandas as pd
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
@@ -14,9 +14,11 @@ from app.config import OPTIONAL_FILES, REQUIRED_FILES, RUNS_DIR, TOP_K_DEFAULT
 from app.pipeline import explain as explain_mod
 from app.pipeline import models as models_mod
 from app.pipeline import store
+from app.pipeline.cart_insights import compute_cart_insights, recommended_shipping_threshold
 from app.pipeline.export import write_excel_export
 from app.pipeline.runner import prepare_run, train_models
 from app.pipeline.layer1_orchestrator import run_layer1_refinement
+from app.insights import service as insights_service
 from app.insights.router import router as insights_router
 from app.registry import available_industries
 from app.schemas import CartRequest, TrainRequest
@@ -231,10 +233,11 @@ def get_fbt(product_id: str, run_id: str | None = None):
 
 
 @app.post("/recommendations/cart")
-def get_cart_recommendations(payload: CartRequest, run_id: str | None = None):
-    """Recommends companion products for an entire cart at once, computed
-    on demand from the run's raw transactions -- no training step, no
-    precomputed table. Decoupled from the personalized/fbt/popular flow."""
+def get_cart_recommendations(
+    payload: CartRequest,
+    run_id: str | None = None,
+    free_shipping_threshold: float | None = Query(None, gt=0),
+):
     if not payload.product_ids:
         raise HTTPException(400, "cart must contain at least one product_id")
 
@@ -250,12 +253,33 @@ def get_cart_recommendations(payload: CartRequest, run_id: str | None = None):
     ranked = models_mod.cart_cooccurrence_recommendations(txn, payload.product_ids, top_k=TOP_K_DEFAULT)
     enriched = explain_mod.enrich_cart(ranked, product_names)
 
+    # Cart Companion insights, computed on the Insights layer's shared basket index
+    insights = {}
+    try:
+        index = insights_service.get_index_or_build(rid, txn)
+        if free_shipping_threshold is not None:
+            threshold, source = free_shipping_threshold, "request"
+        else:
+            threshold, source = recommended_shipping_threshold(index)
+        insights = compute_cart_insights(
+            index=index,
+            cart_product_ids=payload.product_ids,
+            recommendations=enriched,
+            free_shipping_threshold=threshold,
+            threshold_source=source,
+        )
+    except Exception as e:
+        print(f"Cart insights computation warning: {e}")
+
+    final_recommendations = insights.pop("recommendations", enriched) if insights else enriched
+
     return {
         "run_id": rid,
         "computed_at": run["computed_at"] if run else None,
         "cart": [{"product_id": pid, "name": product_names.get(pid, pid)} for pid in payload.product_ids],
         "customer_label": payload.customer_label,
-        "recommendations": enriched,
+        "recommendations": final_recommendations,
+        "insights": insights,
     }
 
 
